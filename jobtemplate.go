@@ -420,7 +420,8 @@ func ConvertJobTemplateToMPIJob(jt drmaa2interface.JobTemplate) (kubeflow.MPIJob
 
 	spec := kubeflow.MPIJobSpec{
 		RunPolicy: common.RunPolicy{
-			BackoffLimit: toInt32(0),
+			BackoffLimit:   toInt32(0),
+			CleanPodPolicy: newCleanPodPolicy(common.CleanPodPolicyRunning),
 		},
 		MPIImplementation: mpiImplementation,
 		SlotsPerWorker:    toInt32(slotsPerWorker),
@@ -439,4 +440,8 @@ func ConvertJobTemplateToMPIJob(jt drmaa2interface.JobTemplate) (kubeflow.MPIJob
 	}
 
 	return spec, nil
+}
+
+func newCleanPodPolicy(v common.CleanPodPolicy) *common.CleanPodPolicy {
+	return &v
 }

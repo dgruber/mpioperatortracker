@@ -39,7 +39,10 @@ func GetJobInfo(ctx context.Context, mpiClient clientset.Interface, namespace, j
 func GetJobState(ctx context.Context, mpiClient clientset.Interface, namespace, jobName string) (drmaa2interface.JobState, string, error) {
 	job, err := DescribeJob(ctx, mpiClient, namespace, jobName)
 	if err != nil {
-		return drmaa2interface.Undetermined, "", err
+		return drmaa2interface.Undetermined, "unknown job", err
+	}
+	if len(job.Status.Conditions) == 0 {
+		return drmaa2interface.Queued, "no condition", nil
 	}
 	return JobStateFromCondition(job.Status.Conditions[len(job.Status.Conditions)-1])
 }
@@ -47,15 +50,15 @@ func GetJobState(ctx context.Context, mpiClient clientset.Interface, namespace, 
 func JobStateFromCondition(lastCondition common.JobCondition) (drmaa2interface.JobState, string, error) {
 	switch lastCondition.Type {
 	case common.JobCreated:
-		return drmaa2interface.Queued, "", nil
+		return drmaa2interface.Queued, "created", nil
 	case common.JobRunning:
-		return drmaa2interface.Running, "", nil
+		return drmaa2interface.Running, "running", nil
 	case common.JobRestarting:
-		return drmaa2interface.Requeued, "", nil
+		return drmaa2interface.Requeued, "restarting", nil
 	case common.JobSucceeded:
-		return drmaa2interface.Done, "", nil
+		return drmaa2interface.Done, "succeeded", nil
 	case common.JobFailed:
-		return drmaa2interface.Failed, "", nil
+		return drmaa2interface.Failed, "failed", nil
 	}
-	return drmaa2interface.Undetermined, "", nil
+	return drmaa2interface.Undetermined, fmt.Sprintf("unknown condition type %v", lastCondition.Type), nil
 }

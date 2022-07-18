@@ -2,11 +2,14 @@ package mpioperatortracker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/dgruber/drmaa2interface"
+	"github.com/dgruber/drmaa2os/pkg/helper"
+	"github.com/dgruber/drmaa2os/pkg/jobtracker"
 	clientset "github.com/kubeflow/mpi-operator/v2/pkg/client/clientset/versioned"
 )
 
@@ -14,13 +17,22 @@ type MPIOperatorTracker struct {
 	clientset clientset.Interface
 }
 
-func NewMPIOperatorTracker(kubeconfigPath string) (*MPIOperatorTracker, error) {
+func NewMPIOperatorTracker(kubeconfigPath string, testInstallMPIOperator bool) (*MPIOperatorTracker, error) {
 	if kubeconfigPath == "" {
 		kubeconfigPath = os.Getenv("KUBECONFIG")
 		if kubeconfigPath == "" {
 			kubeconfigPath = os.Getenv("HOME") + "/.kube/config"
 		}
 	}
+
+	// only for testing: Installs MPIOperator itself
+	if testInstallMPIOperator {
+		err := InstallMPIOperator(kubeconfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to install MPIOperator: %v\n", err)
+		}
+	}
+
 	restConfig, err := NewRestConfig(kubeconfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST config: %v\n", err)
@@ -38,7 +50,7 @@ func NewMPIOperatorTracker(kubeconfigPath string) (*MPIOperatorTracker, error) {
 func (t *MPIOperatorTracker) ListJobs() ([]string, error) {
 	jobs, err := ListJobs(context.Background(), t.clientset, "default")
 	if err != nil {
-		return nil, fmt.Errorf("Failed to list MPIOperator jobs: %v\n", err)
+		return nil, fmt.Errorf("failed to list MPIOperator jobs: %v\n", err)
 	}
 	names := make([]string, len(jobs))
 	for job := range jobs {
@@ -50,7 +62,7 @@ func (t *MPIOperatorTracker) ListJobs() ([]string, error) {
 // ListArrayJobs returns all job IDs an job array ID (or array job ID)
 // represents or an error.
 func (t *MPIOperatorTracker) ListArrayJobs(arrayjobID string) ([]string, error) {
-	panic("not implemented") // TODO: Implement
+	return helper.ArrayJobID2GUIDs(arrayjobID)
 }
 
 // AddJob typically submits or starts a new job at the backend. The function
@@ -62,7 +74,7 @@ func (t *MPIOperatorTracker) AddJob(jobTemplate drmaa2interface.JobTemplate) (st
 		return "", fmt.Errorf("failed to convert DRMAA2 job template to MPI job: %v\n", err)
 	}
 	job := NewMPIJob(spec)
-	jobID, err := CreateJob(context.TODO(), t.clientset, &job, true)
+	jobID, err := CreateJob(context.TODO(), t.clientset, &job, false)
 	if err != nil {
 		return "", fmt.Errorf("failed to create job: %v\n", err)
 	}
@@ -81,7 +93,7 @@ func (t *MPIOperatorTracker) AddJob(jobTemplate drmaa2interface.JobTemplate) (st
 // task they are and determine that way what to do (like which data set is
 // accessed).
 func (t *MPIOperatorTracker) AddArrayJob(jt drmaa2interface.JobTemplate, begin int, end int, step int, maxParallel int) (string, error) {
-	panic("not implemented") // TODO: Implement
+	return helper.AddArrayJobAsSingleJobs(jt, t, begin, end, step)
 }
 
 // JobState returns the DRMAA2 state and substate (free form string) of the job.
@@ -100,15 +112,28 @@ func (t *MPIOperatorTracker) JobInfo(jobID string) (drmaa2interface.JobInfo, err
 // only to constants representing the actions. When the request is not accepted
 // by the system the function must return an error.
 func (t *MPIOperatorTracker) JobControl(jobID string, action string) error {
-	panic("not implemented") // TODO: Implement
+	switch action {
+	case jobtracker.JobControlSuspend:
+		return errors.New("unsupported operation")
+	case jobtracker.JobControlResume:
+		return errors.New("unsupported operation")
+	case jobtracker.JobControlHold:
+		return errors.New("unsupported operation")
+	case jobtracker.JobControlRelease:
+		return errors.New("unsupported operation")
+	case jobtracker.JobControlTerminate:
+		// there seems no way to stop a job
+		return t.DeleteJob(jobID)
+	}
+	return fmt.Errorf("undefined job operation")
 }
 
 // Wait blocks until the job is either in one of the given states, the max.
 // waiting time (specified by timeout) is reached or an other internal
 // error occured (like job was not found). In case of a timeout also an
 // error must be returned.
-func (t *MPIOperatorTracker) Wait(jobID string, timeout time.Duration, state ...drmaa2interface.JobState) error {
-	panic("not implemented") // TODO: Implement
+func (t *MPIOperatorTracker) Wait(jobID string, timeout time.Duration, states ...drmaa2interface.JobState) error {
+	return helper.WaitForState(t, jobID, timeout, states...)
 }
 
 // DeleteJob removes a job from a potential internal database. It does not stop
@@ -129,5 +154,6 @@ func (t *MPIOperatorTracker) DeleteJob(jobID string) error {
 // is returning a list of supported container images. AddJob() and AddArrayJob()
 // processes a JobTemplate and hence also the JobCategory field.
 func (MPIOperatorTracker) ListJobCategories() ([]string, error) {
-	panic("not implemented") // TODO: Implement
+	// all kind of launcher images are supported
+	return []string{}, nil
 }
